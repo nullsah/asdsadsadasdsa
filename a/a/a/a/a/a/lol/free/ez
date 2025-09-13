@@ -1,0 +1,238 @@
+local Players = game:GetService("Players")
+local UserInput = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Camera = workspace.CurrentCamera
+local GuiService = game:GetService("GuiService")
+local TeleportService = game:GetService("TeleportService")
+local LocalPlayer = Players.LocalPlayer
+local MainEvent = ReplicatedStorage:WaitForChild("MainEvent")
+local Settings = {
+    Keybind        = Enum.KeyCode.C,
+    VoidKey        = Enum.KeyCode.Z,
+    TeleportKey    = Enum.KeyCode.T,
+    ViewKey        = Enum.KeyCode.H,
+    OrbitKey       = Enum.KeyCode.V,
+    HitPart        = "Head",
+    FOV            = 220,
+    ShootDistance  = 200,
+    VoidDistance   = 1e10,
+    VoidTime       = 0.25,
+    VoidCooldown   = 0.25,
+    Spread         = 0,
+    AutoTarget     = false,
+    AimSmooth      = 0.12,
+    PrioritizeHead = true,
+    OrbitRadius    = 10,
+    OrbitSpeed     = 50
+}
+local CurrentTarget = nil
+local VoidEnabled   = false
+local ViewEnabled   = false
+local OrbitEnabled  = false
+local Circle = Drawing.new("Circle")
+Circle.Radius = Settings.FOV
+Circle.Thickness = 2
+Circle.Color = Color3.fromHSV(0,1,1)
+Circle.Filled = false
+Circle.Visible = true
+local ForceTracer = Drawing.new("Line")
+ForceTracer.Thickness = 2
+ForceTracer.Color = Color3.fromHSV(0,1,1)
+ForceTracer.Visible = false
+local VoidSign = Instance.new("BillboardGui")
+VoidSign.Size = UDim2.new(0,250,0,60)
+VoidSign.AlwaysOnTop = true
+VoidSign.Enabled = false
+VoidSign.Parent = LocalPlayer:WaitForChild("PlayerGui")
+local TextLabel = Instance.new("TextLabel", VoidSign)
+TextLabel.Size = UDim2.new(1,0,1,0)
+TextLabel.BackgroundTransparency = 1
+TextLabel.TextColor3 = Color3.fromRGB(255,0,0)
+TextLabel.TextStrokeTransparency = 0
+TextLabel.TextScaled = true
+TextLabel.Text = "[⚠ VOID ACTIVE ⚠]"
+TextLabel.Font = Enum.Font.Code
+local function HasForceField(char)
+    local ff = char and char:FindFirstChildOfClass("ForceField")
+    return ff and ff.Enabled
+end
+local function IsValidTarget(player)
+    if not player or player == LocalPlayer then return false end
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    return hum and hum.Health > 0 and hrp
+end
+local function GetClosestToMouse()
+    local closest, shortest = nil, math.huge
+    local mouse = UserInput:GetMouseLocation()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if IsValidTarget(plr) then
+            local part = plr.Character:FindFirstChild(Settings.HitPart) or plr.Character:FindFirstChild("Head")
+            if part then
+                local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                if onScreen then
+                    local dist = (Vector2.new(pos.X,pos.Y)-mouse).Magnitude
+                    if dist < Settings.FOV and dist < shortest then
+                        closest, shortest = plr, dist
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+local function GetTargetPart()
+    if not CurrentTarget then return nil end
+    local char = CurrentTarget.Character
+    if not char then return nil end
+    if Settings.PrioritizeHead then
+        return char:FindFirstChild("Head") or char:FindFirstChild(Settings.HitPart)
+    else
+        for _, name in ipairs({Settings.HitPart,"HumanoidRootPart","UpperTorso","Torso","LowerTorso","Head"}) do
+            local p = char:FindFirstChild(name)
+            if p then return p end
+        end
+    end
+end
+local function ClearTarget()
+    CurrentTarget = nil
+    ViewEnabled = false
+    Camera.CameraSubject = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") or Camera.CameraSubject
+end
+local function SafeFireHit()
+    if not CurrentTarget then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local tool = LocalPlayer.Backpack:FindFirstChildOfClass("Tool") or char:FindFirstChildOfClass("Tool")
+    local targetPart = GetTargetPart()
+    if not hrp or not tool or not targetPart then return end
+    local targetChar = CurrentTarget.Character
+    if HasForceField(targetChar) then return end
+
+    local dist = (hrp.Position - targetPart.Position).Magnitude
+    if dist <= Settings.ShootDistance then
+        local spreadOffset = Vector3.new(
+            (math.random() - 0.5) * Settings.Spread,
+            (math.random() - 0.5) * Settings.Spread,
+            (math.random() - 0.5) * Settings.Spread
+        )
+        local hitPos = targetPart.Position + spreadOffset
+
+        task.spawn(function()
+            MainEvent:FireServer("UpdateMousePos", hitPos)
+            MainEvent:FireServer("Shoot", {
+                [1] = {
+                    [1] = {Instance = targetPart, Position = hitPos, Normal = Vector3.new(0,0,-1)}
+                },
+                [2] = {
+                    [1] = {thePart = targetPart, theOffset = Vector3.new()}
+                },
+                [3] = char.Head.Position,
+                [4] = hitPos,
+                [5] = tick(),
+                [6] = tool
+            })
+        end)
+    end
+end
+UserInput.InputBegan:Connect(function(input,gp)
+    if gp then return end
+    if input.KeyCode == Settings.Keybind then
+        CurrentTarget = GetClosestToMouse()
+    elseif input.KeyCode == Settings.ViewKey and CurrentTarget then
+        ViewEnabled = not ViewEnabled
+        if not ViewEnabled then Camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid") end
+    elseif input.KeyCode == Settings.VoidKey then
+        VoidEnabled = not VoidEnabled
+        VoidSign.Enabled = VoidEnabled
+    elseif input.KeyCode == Settings.TeleportKey and CurrentTarget then
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local targetHrp = GetTargetPart()
+        if hrp and targetHrp then hrp.CFrame = targetHrp.CFrame + Vector3.new(0,0,-3) end
+    elseif input.KeyCode == Settings.OrbitKey then
+        OrbitEnabled = not OrbitEnabled
+    end
+end)
+RunService.RenderStepped:Connect(function(dt)
+    Circle.Position = UserInput:GetMouseLocation()
+    Circle.Color = Color3.fromHSV(tick()%5/5,1,1)
+
+    if CurrentTarget then
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local targetPart = GetTargetPart()
+        if hrp and targetPart then
+            local screenHRP, onHRP = Camera:WorldToViewportPoint(hrp.Position)
+            local screenTarget, onTarget = Camera:WorldToViewportPoint(targetPart.Position)
+            if onHRP and onTarget then
+                ForceTracer.From = Vector2.new(screenHRP.X,screenHRP.Y)
+                ForceTracer.To = Vector2.new(screenTarget.X,screenTarget.Y)
+                ForceTracer.Color = Color3.fromHSV(tick()%5/5,1,1)
+                ForceTracer.Thickness = 1 + (300 - (hrp.Position - targetPart.Position).Magnitude)/75
+                ForceTracer.Visible = true
+            else
+                ForceTracer.Visible = false
+            end
+        else
+            ForceTracer.Visible = false
+        end
+    else
+        ForceTracer.Visible = false
+    end
+
+    if ViewEnabled and CurrentTarget then
+        local targetPart = GetTargetPart()
+        if targetPart then Camera.CameraSubject = targetPart end
+    end
+
+    if OrbitEnabled and CurrentTarget then
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local targetPart = GetTargetPart()
+        if hrp and targetPart then
+            local t = tick() * Settings.OrbitSpeed
+            local offset = Vector3.new(math.cos(t),0,math.sin(t)) * Settings.OrbitRadius
+            hrp.CFrame = CFrame.new(targetPart.Position + offset, targetPart.Position)
+        end
+    end
+end)
+RunService.Heartbeat:Connect(function()
+    if CurrentTarget then
+        local targetPart = GetTargetPart()
+        if targetPart then
+            local pos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+            if onScreen then task.spawn(SafeFireHit) end
+        end
+    end
+end)
+task.spawn(function()
+    while true do
+        RunService.Heartbeat:Wait()
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if VoidEnabled and hrp then
+            local original = hrp.CFrame
+            hrp.CFrame = original + Vector3.new(0,Settings.VoidDistance,0)
+            VoidSign.Enabled = true
+            if CurrentTarget then task.spawn(SafeFireHit) end
+            task.wait(Settings.VoidTime)
+            hrp.CFrame = original
+            VoidSign.Enabled = false
+            task.wait(Settings.VoidCooldown)
+        else
+            task.wait(0.02)
+        end
+    end
+end)
+LocalPlayer.CharacterAdded:Connect(function()
+    VoidSign.Enabled = false
+    if ViewEnabled then Camera.CameraSubject = LocalPlayer.Character:WaitForChild("Humanoid") end
+end)
+GuiService.ErrorMessageChanged:Connect(function()
+    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+end)

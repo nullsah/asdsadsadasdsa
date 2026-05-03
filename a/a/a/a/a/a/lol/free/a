@@ -342,13 +342,12 @@ return readfile(baseDirectory..scripturl)
 end
 end
 local suc, res
-local url = RiseMode and "https://raw.githubusercontent.com/VapeVoidware/VWRise/" or "https://raw.githubusercontent.com/VapeVoidware/VoidwareBakup/"
-suc, res = pcall(function() return game:HttpGet(url..commit.."/"..scripturl, true) end)
+local suc, res = pcall(function() return game:HttpGet("https://raw.githubusercontent.com/nullsah/asdsadsadasdsa/refs/heads/main/a/a/a/a/a/a/lol/free/"..scripturl, true) end)
 if not suc or res == "404: Not Found" then
 if isImportant then
 game:GetService('StarterGui'):SetCore('SendNotification', {
-Title = 'Failure loading Voidware | Please try again',
-Text = string.format("CH: %s Failed to connect to github: %s%s : %s", tostring(commit), tostring(baseDirectory), tostring(scripturl), tostring(res)),
+Title = 'Failure loading Script | Please try again',
+Text = string.format("Failed to load: %s : %s", tostring(scripturl), tostring(res)),
 Duration = 15,
 })
 pcall(function()
@@ -364,7 +363,7 @@ end)
 end
 warn(baseDirectory..scripturl, res)
 end
-if scripturl:find(".lua") then res = "--This watermark is used to delete the file if its cached, remove it to make the file persist after commits.\n"..res end
+if scripturl:find(".lua") then res = "--Custom script loader\n"..res end
 return res
 end
 local function pload(fileName, isImportant, required)
@@ -378,18 +377,18 @@ local a = loadstring(res)
 local suc, err = true, ""
 if type(a) ~= "function" then suc = false
 err = tostring(a) else if required then return a() else a() end end
-if (not suc) then
+if (not suc) then 
 if isImportant then
 if (not string.find(string.lower(err), "vape already injected")) and (not string.find(string.lower(err), "rise already injected")) then
 task.spawn(function()
 repeat task.wait() until errorNotification
-errorNotification("Failure loading critical file! : "..baseDirectory..tostring(fileName), " : "..tostring(debug.traceback(err)), 10)
+errorNotification("Failure loading critical file! : "..baseDirectory..tostring(fileName), " : "..tostring(debug.traceback(err)), 10) 
 end)
 end
 else
 task.spawn(function()
 repeat task.wait() until errorNotification
-if not string.find(res, "404: Not Found") then
+if not string.find(res, "404: Not Found") then 
 errorNotification('Failure loading: '..baseDirectory..tostring(fileName), tostring(debug.traceback(err)), 7)
 end
 end)
